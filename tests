@@ -1,0 +1,2 @@
+sh /home/nrtservice/mod/cat_AVHRR.sh file:///data/eo/NOAA/NOAA_AVHRR_L1B_GAP/1993/05/05/9305051644TSN4.zip
+sh /home/nrtservice/mod/cat_AVHRR.sh file:////data/eo/NOAA/NOAA_AVHRR_L1B_GAP/1998/09/17/9809172029MSN5.tgz

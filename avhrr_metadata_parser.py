@@ -65,10 +65,14 @@ def get_right_line(csvfile,srchstring):
 
 def get_size(path):
     total_size = 0
-    for dirpath, dirnames, filenames in os.walk(path):
-        for f in filenames:
-            fp = os.path.join(dirpath, f)
-            total_size += os.path.getsize(fp)
+    ext = os.path.splitext(path)[-1]
+    if ext in zipped:
+        total_size = os.path.getsize(path)
+    else:
+        for dirpath, dirnames, filenames in os.walk(path):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                total_size += os.path.getsize(fp)
     return total_size
 
 
@@ -86,7 +90,8 @@ def parse_footprint(corners):
         okfootprint = True
     except:
         okfootprint = False
-        footprint = "POLYGON((0 0, 0 0, 0 0, 0 0, 0 0))"
+        # footprint = "POLYGON((0 0, 0 0, 0 0, 0 0, 0 0))"
+        footprint = "POLYGON((-180 -90,-180 90,180 90,180 -90,-180 -90))"
     return footprint, okfootprint
 
 
@@ -111,7 +116,11 @@ def locate(file, root):
 
 
 def compose_output(img, img_path, theline, ds, footprint):
-    plevel = get_level(os.path.join(img_path, img), theline)
+    ext = os.path.splitext(img_path)[-1]
+    if ext in zipped:
+        plevel = get_level_in_zipped(img_path, theline)
+    else:
+        plevel = get_level(os.path.join(img_path, img), theline)
     ds = get_dataset(ds, plevel, footprint)
     acq_station = ''
     if theline[5] != '': acq_station = "acquisition_station=" + theline[5]
@@ -140,8 +149,6 @@ def folder_structure(outdir, level, date, ds, footprint):
 
 
 def get_level(file, metadata):
-    level_patterns=[r"LEVEL [0-1][AB_]",r"L[0-1][AB_]"]
-    searchfiles = ['catalogue.ief','catalogue.iuf','LEADER']
     level = metadata[7]
     if level == '':
         for sf in searchfiles:
@@ -161,15 +168,52 @@ def get_level(file, metadata):
     return level
 
 
+def get_level_in_zipped(ofile, metadata):
+    level = metadata[7]
+    ext = os.path.splitext(ofile)[-1]
+    if ext == ".zip":
+        archive = zipfile.ZipFile(ofile, 'r')
+        filelist = archive.namelist()
+    else:
+        tar = tarfile.open(ofile, "r:gz")
+        filelist = tar.getmembers()
+    if level == '':
+        for sf in searchfiles:
+            #sf = os.path.join(file, sf)
+            if sf in filelist:
+                if ext == ".zip":
+                    mtdtext = archive.read(sf)
+                else:
+                    mtdtext = tar.extractfile(sf).read()
+                # with open(sf, encoding="utf8", errors='ignore') as f:
+                #     mtdtext = f.read()
+                for p in level_patterns:
+                    level = re.search(p, mtdtext)
+                    if level:
+                        level = level.group(0)
+                        break
+    elif not level[1:] == "L":
+        level = "L"+level
+    if level == None: level = 'Not available'
+    return level
+
+
 def organize(theline,output,full_img_path, ds, footprint):
     timestr, timeobj = parse_time(theline[1], theline[2])
     nf = folder_structure(output, get_level(full_img_path, theline), timeobj, ds, footprint)
     img = os.path.basename(full_img_path)
     img_newpath = os.path.join(nf, img)
-    zippedimg = img_newpath + ".tgz"
+    zippedimg = ''
     if not os.path.exists(img_newpath):
-        os.chdir(full_img_path)
-        make_tarfile(zippedimg, full_img_path)
+        ext = os.path.splitext(full_img_path)[-1]
+        if ext in zipped:
+            zippedimg = img_newpath
+            os.chdir(os.path.dirname(full_img_path))
+            shutil.copyfile(full_img_path, img_newpath)
+        else:
+            zippedimg = img_newpath + ".tgz"
+            os.chdir(full_img_path)
+            make_tarfile(zippedimg, full_img_path)
         #
         # shutil.copytree(full_img_path, img_newpath)  ##Uncomment if you want to copy also the original img folder into the new destination
         # tar_string = "tar czf " + zippedimg + " *"
@@ -179,22 +223,23 @@ def organize(theline,output,full_img_path, ds, footprint):
 
 
 def handle_zipped_input(src):
-    zipped = [".tar",".tgz",".tar.gz",".zip"]
     ext = os.path.splitext(src)[-1]
     dst_dir = os.path.splitext(src)[0]
     if ext in zipped:
         unzipped = True
-        src_dir = os.path.splitext(src)[0]
-        if ext==".zip":
-            with zipfile.ZipFile(src, 'r') as tar:
-                tar.extractall(path=dst_dir)
-        else:
-            tar = tarfile.open(src)
-            tar.extractall(path=dst_dir)
-            tar.close()
+        src_dir = src
+        # src_dir = os.path.splitext(src)[0]
+        # if ext==".zip":
+        #     with zipfile.ZipFile(src, 'r') as tar:
+        #         tar.extractall(path=dst_dir)
+        # else:
+        #     tar = tarfile.open(src)
+        #     tar.extractall(path=dst_dir)
+        #     tar.close()
     else:
         unzipped = False
         src_dir = src
+        dst_dir = src
     if os.path.exists(src):
         img = os.path.basename(src_dir)
         return img, src_dir, dst_dir, unzipped
@@ -206,17 +251,31 @@ def make_tarfile(output_filename, source_dir):
 
 
 def get_right_img_dir(strg):
-    zexts = [".tar", ".tgz", ".tar.gz", ".zip"]
     oexts = [".l1a", "IMAGE"] #, "LEADER"]
     fstring = ''
-    if strg[-4:] in zexts:
+    if strg[-4:] in zipped:
         fstring = strg
     else:
-        for filename in os.listdir(os.path.dirname(strg)):
-            for g in oexts:
-                if filename.find(g)>=0:
-                    fstring = os.path.dirname(strg)
-                    break
+        if os.path.isfile(strg):
+            for filename in os.listdir(os.path.dirname(strg)):
+                for g in oexts:
+                    if filename.find(g)>=0:
+                        fstring = os.path.dirname(strg)
+                        break
+        elif os.path.isdir(strg) and strg[-5:] == ".SHRK":
+            for folder, subfolders, files in os.walk(strg):
+                if folder != strg:
+                    for filename in files:
+                        for g in oexts:
+                            if filename.find(g) >= 0:
+                                fstring = strg
+                                break
+        elif os.path.isdir(strg):
+            for filename in os.listdir(strg):
+                for g in oexts:
+                    if filename.find(g)>=0:
+                        fstring = strg
+                        break
     return fstring
 
 
@@ -230,6 +289,9 @@ def list_products(records_csv, product, processed_successfully, footprint, dest_
 
 if __name__ == '__main__':
     #setup some variables
+    zipped = [".tar", ".tgz", ".tar.gz", ".zip"]
+    level_patterns = [r"LEVEL [0-1][AB_]",r"L[0-1][AB_]"]
+    searchfiles = ['catalogue.ief','catalogue.iuf','LEADER']
     args = setup_cmd_args()
     TMPDIR=args.output
     logging.basicConfig(filename=os.path.join(TMPDIR,'avhrr_parser.log'), level=logging.INFO, format='INFO: %(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -260,21 +322,31 @@ if __name__ == '__main__':
             for line in lines:
                 repeated = list(set(repeated))
                 line = os.path.normpath(line.rstrip())
-                if os.path.isfile(line):
+                if os.path.isfile(line) or os.path.isdir(line):
                     img = get_right_img_dir(line)
                     if not os.path.basename(img) in repeated:
                         if not img == '':
                             img, full_img_path, dest_dir, unzipped = handle_zipped_input(img)
                             repeated.append(img)
-                            img_path = os.path.dirname(full_img_path)
-                            thecsv = find_right_csv(img,csv_files_comp)
+                            # if not unzipped:
+                            #     img_path = os.path.dirname(full_img_path)
+                            # else:
+                            img_path = full_img_path
+                            ext = os.path.splitext(img_path)[-1]
+                            if ext in zipped:
+                                productid = img[:-4]
+                            else:
+                                productid = img
+                            thecsv = find_right_csv(productid, csv_files_comp)
+                            # print(img, full_img_path, dest_dir, unzipped, thecsv)
                             logging.info("---Processing product " + full_img_path)
                             if not thecsv==None:
-                                theline = get_right_line(thecsv,img)
+                                theline = get_right_line(thecsv, productid)
                                 if args.f:
-                                    finalstrg = compose_output(img, img_path, theline, args.ds, parse_footprint(theline[8])[1])
+                                    finalstrg = compose_output(productid, img_path, theline, args.ds, parse_footprint(theline[8])[1])
                                 else:
-                                    finalstrg = compose_output(img, img_path, theline, args.ds, True)
+                                    finalstrg = compose_output(productid, img_path, theline, args.ds, True)
+
                                 if get_level(full_img_path, theline) == "Not available":
                                     logging.info("Could not find the processing level for the product.")
                                 if parse_footprint(theline[8])[1] == False:
@@ -302,15 +374,23 @@ if __name__ == '__main__':
     elif args.avhrr_file != None:
         img, full_img_path, dest_dir, unzipped = handle_zipped_input(args.avhrr_file)
         if not img == '':
-            img_path = os.path.split(args.avhrr_file)[0]
-            thecsv = find_right_csv(img, csv_files_comp)
+            img_path = full_img_path
+            ext = os.path.splitext(img_path)[-1]
+            if ext in zipped:
+                productid = img[:-4]
+            else:
+                productid = img
+            thecsv = find_right_csv(productid, csv_files_comp)
+            # img_path = os.path.split(args.avhrr_file)[0]
+            # thecsv = find_right_csv(img, csv_files_comp)
             logging.info("---Processing product " + full_img_path)
             if not thecsv == None:
-                theline = get_right_line(thecsv, img)
+                theline = get_right_line(thecsv, productid)
+                # theline = get_right_line(thecsv, img)
                 if args.f:
-                    finalstrg = compose_output(img, img_path, theline, args.ds, parse_footprint(theline[8])[1])
+                    finalstrg = compose_output(productid, img_path, theline, args.ds, parse_footprint(theline[8])[1])
                 else:
-                    finalstrg = compose_output(img, img_path, theline, args.ds, True)
+                    finalstrg = compose_output(productid, img_path, theline, args.ds, True)
                 if get_level(full_img_path, theline) == "Not available":
                     logging.info("Could not find the processing level for the product.")
                 if parse_footprint(theline[8])[1] == False:

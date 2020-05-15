@@ -9,7 +9,8 @@ Execute the avhrr_metadata_parser.py script with *-h* flag for usage help.
 ```
 $ python avhrr_metadata_parser.py -h
 usage: avhrr_metadata_parser.py [-h] --output dst_dir
-                               [--avhrr_file avhrrproduct_file_or_dir] [--avhrr_list avhrrproduct_list_of_files_or_dirs] [--noaa_mtd metadata_csvs]
+                               [--avhrr_file avhrrproduct_file_or_dir] [--avhrr_list avhrrproduct_list_of_files_or_dirs]
+                               [--noaa_mtd metadata_csvs]
                                [-O] [-r] 
 
 avhrr_metadata_parser is a parser intended to print to stdout, properly formated metadata for avhrr products.
@@ -26,6 +27,8 @@ optional arguments:
   --ds DS               The dataset name for the avhrr file (default: None)
   -O                    Organize the output folders of the avhrr file
                         (default: False)
+  -d                    Read directly from metadata file, instead of csv files. This is needed in order to run .dat 
+                        files because those are not well identified in the csv tables.
   -r                    Remove avhrr dir after zipping (default: False)
 ```
 

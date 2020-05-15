@@ -22,6 +22,7 @@ def setup_cmd_args():
     parser.add_argument("-O", action='store_true', help="Organize the output folders of the avhrr file")
     parser.add_argument("-f", action='store_true', help="Separate the products without footprint")
     parser.add_argument("-r", action='store_true', help="Remove avhrr dir after zipping")
+    parser.add_argument("-d", action='store_true', help="Read directly from metadata file, instead of csv files.")
     parser.add_argument("-l", action='store_true', help="Export csv list of processed/non-processed products")
     return parser.parse_args()
 
@@ -53,7 +54,7 @@ def find_right_csv(string_to_find,csv_files):
     return right_csv
 
 
-def get_right_line(csvfile,srchstring):
+def get_right_line(csvfile, srchstring):
     right_line=None
     reader = csv.reader(open(csvfile, 'r'))
     for data in reader:
@@ -251,7 +252,7 @@ def make_tarfile(output_filename, source_dir):
 
 
 def get_right_img_dir(strg):
-    oexts = [".l1a", "IMAGE"] #, "LEADER"]
+    oexts = [".l1a", "IMAGE", ".dat"] #, "LEADER"]
     fstring = ''
     if strg[-4:] in zipped:
         fstring = strg
@@ -287,11 +288,37 @@ def list_products(records_csv, product, processed_successfully, footprint, dest_
         f.close()
 
 
+def read_ief(img, img_path, ds):
+    ext = os.path.splitext(img_path)[-1]
+    if ext in zipped:
+        tar = tarfile.open(img_path)
+        m = tar.extractfile(img + ".ief")
+        raw_contents = str(m.read())
+        tar.close()
+    else:
+        ief_file = os.path.join(img_path, img + ".ief")
+        m = open(ief_file, "r")
+        raw_contents = m.read()
+    contents = raw_contents.replace("-", " -")
+    raw_footprint = f"{contents.split()[15]} {contents.split()[16]} {contents.split()[17]} {contents.split()[18]} {contents.split()[19]} {contents.split()[20]} {contents.split()[21]} {contents.split()[22]}"
+    acq_station = "acquisition_station=" + contents.split()[9][:3]
+    finalstrg = "product=" + img + "\n" \
+                "dataset=" + ds + "\n" \
+                + re.sub(' +', '_', acq_station) + "\n" \
+                "start_orbit_number=" + contents.split()[9][6:11].replace("?????", "0") + "\n" \
+                "size=" + str(get_size(img_path)) + "\n" \
+                "start_time=" + str(parse_time(contents.split()[6], contents.split()[7])[0]) + "\n" \
+                "stop_time=" + str(parse_time(contents.split()[6], contents.split()[8])[0]) + "\n" \
+                "footprint='" + parse_footprint(raw_footprint)[0] + "'"
+    theline = ("", contents.split()[6], contents.split()[7], contents.split()[8], "", "", "", "", raw_footprint)
+    return finalstrg, theline
+
+
 if __name__ == '__main__':
     #setup some variables
     zipped = [".tar", ".tgz", ".tar.gz", ".zip"]
-    level_patterns = [r"LEVEL [0-1][AB_]",r"L[0-1][AB_]"]
-    searchfiles = ['catalogue.ief','catalogue.iuf','LEADER']
+    level_patterns = [r"LEVEL [0-1][AB_]", r"L[0-1][AB_]"]
+    searchfiles = ['catalogue.ief', 'catalogue.iuf', 'LEADER']
     args = setup_cmd_args()
     TMPDIR=args.output
     logging.basicConfig(filename=os.path.join(TMPDIR,'avhrr_parser.log'), level=logging.INFO, format='INFO: %(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -332,41 +359,43 @@ if __name__ == '__main__':
                             #     img_path = os.path.dirname(full_img_path)
                             # else:
                             img_path = full_img_path
+                            logging.info("---Processing product " + full_img_path)
                             ext = os.path.splitext(img_path)[-1]
                             if ext in zipped:
                                 productid = img[:-4]
                             else:
                                 productid = img
-                            thecsv = find_right_csv(productid, csv_files_comp)
-                            # print(img, full_img_path, dest_dir, unzipped, thecsv)
-                            logging.info("---Processing product " + full_img_path)
-                            if not thecsv==None:
-                                theline = get_right_line(thecsv, productid)
-                                if args.f:
-                                    finalstrg = compose_output(productid, img_path, theline, args.ds, parse_footprint(theline[8])[1])
-                                else:
-                                    finalstrg = compose_output(productid, img_path, theline, args.ds, True)
-
-                                if get_level(full_img_path, theline) == "Not available":
-                                    logging.info("Could not find the processing level for the product.")
-                                if parse_footprint(theline[8])[1] == False:
-                                    logging.info("Product has no footprint")
-                                print(finalstrg)
-                                if not args.O: list_products(records_csv, full_img_path, "Metadata", parse_footprint(theline[8])[1], "N/A",
-                                              get_level(full_img_path, theline))
-                                logging.info("Metadata was successfully printed to stdout")
-                                if args.O:
-                                    if args.f:
-                                        zippedimg = organize(theline, args.output, full_img_path, args.ds, parse_footprint(theline[8])[1])
-                                    else:
-                                        zippedimg = organize(theline, args.output, full_img_path, args.ds, True)
-                                    logging.info("Product was stored into " + zippedimg)
-                                    list_products(records_csv, full_img_path, "Re-organized", parse_footprint(theline[8])[1], zippedimg, get_level(full_img_path, theline))
-                                elif args.r and unzipped:
-                                    shutil.rmtree(full_img_path)
+                            if args.d:
+                                finalstrg, theline = read_ief(productid, img_path, args.ds)
                             else:
-                                logging.info("Product was not found in the CSVs!")
-                                list_products(records_csv, full_img_path, "not found in the CSVs", "N/A", "N/A", "N/A")
+                                thecsv = find_right_csv(productid, csv_files_comp)
+                                if not thecsv==None:
+                                    theline = get_right_line(thecsv, productid)
+                                    if args.f:
+                                        finalstrg = compose_output(productid, img_path, theline, args.ds, parse_footprint(theline[8])[1])
+                                    else:
+                                        finalstrg = compose_output(productid, img_path, theline, args.ds, True)
+
+                                    if get_level(full_img_path, theline) == "Not available":
+                                        logging.info("Could not find the processing level for the product.")
+                                    if parse_footprint(theline[8])[1] == False:
+                                        logging.info("Product has no footprint")
+                                else:
+                                    logging.info("Product was not found in the CSVs!")
+                                    list_products(records_csv, full_img_path, "not found in the CSVs", "N/A", "N/A", "N/A")
+                            print(finalstrg)
+                            if not args.O: list_products(records_csv, full_img_path, "Metadata", parse_footprint(theline[8])[1], "N/A",
+                                          get_level(full_img_path, theline))
+                            logging.info("Metadata was successfully printed to stdout")
+                            if args.O:
+                                if args.f:
+                                    zippedimg = organize(theline, args.output, full_img_path, args.ds, parse_footprint(theline[8])[1])
+                                else:
+                                    zippedimg = organize(theline, args.output, full_img_path, args.ds, True)
+                                logging.info("Product was stored into " + zippedimg)
+                                list_products(records_csv, full_img_path, "Re-organized", parse_footprint(theline[8])[1], zippedimg, get_level(full_img_path, theline))
+                            elif args.r and unzipped:
+                                shutil.rmtree(full_img_path)
                         else:
                             logging.info("---Processing product " + line)
                             logging.info("Product was not found or doesn't have the expected file structure!")
@@ -375,42 +404,45 @@ if __name__ == '__main__':
         img, full_img_path, dest_dir, unzipped = handle_zipped_input(args.avhrr_file)
         if not img == '':
             img_path = full_img_path
+            logging.info("---Processing product " + full_img_path)
             ext = os.path.splitext(img_path)[-1]
             if ext in zipped:
                 productid = img[:-4]
             else:
                 productid = img
-            thecsv = find_right_csv(productid, csv_files_comp)
-            # img_path = os.path.split(args.avhrr_file)[0]
-            # thecsv = find_right_csv(img, csv_files_comp)
-            logging.info("---Processing product " + full_img_path)
-            if not thecsv == None:
-                theline = get_right_line(thecsv, productid)
-                # theline = get_right_line(thecsv, img)
-                if args.f:
-                    finalstrg = compose_output(productid, img_path, theline, args.ds, parse_footprint(theline[8])[1])
-                else:
-                    finalstrg = compose_output(productid, img_path, theline, args.ds, True)
-                if get_level(full_img_path, theline) == "Not available":
-                    logging.info("Could not find the processing level for the product.")
-                if parse_footprint(theline[8])[1] == False:
-                    logging.info("Product has no footprint")
-                print(finalstrg)
-                if not args.O: list_products(records_csv, full_img_path, "Metadata", parse_footprint(theline[8])[1], "N/A", get_level(full_img_path, theline))
-                logging.info("Metadata was successfully printed to stdout")
-                if args.O:
-                    if args.f:
-                        zippedimg = organize(theline, args.output, full_img_path, args.ds,
-                                             parse_footprint(theline[8])[1])
-                    else:
-                        zippedimg = organize(theline, args.output, full_img_path, args.ds, True)
-                    logging.info("Product was stored into " + zippedimg)
-                    list_products(records_csv, full_img_path, "Re-organized", parse_footprint(theline[8])[1], zippedimg, get_level(full_img_path, theline))
-                elif args.r and unzipped:
-                    shutil.rmtree(full_img_path)
+            if args.d:
+                finalstrg, theline = read_ief(productid, img_path, args.ds)
             else:
-                logging.info("Product was not found in the CSVs!")
-                list_products(records_csv, full_img_path, "not found in the CSVs", "N/A", "N/A", "N/A")
+                thecsv = find_right_csv(productid, csv_files_comp)
+                # img_path = os.path.split(args.avhrr_file)[0]
+                # thecsv = find_right_csv(img, csv_files_comp)
+                if not thecsv == None:
+                    theline = get_right_line(thecsv, productid)
+                    # theline = get_right_line(thecsv, img)
+                    if args.f:
+                        finalstrg = compose_output(productid, img_path, theline, args.ds, parse_footprint(theline[8])[1])
+                    else:
+                        finalstrg = compose_output(productid, img_path, theline, args.ds, True)
+                    if get_level(full_img_path, theline) == "Not available":
+                        logging.info("Could not find the processing level for the product.")
+                    if parse_footprint(theline[8])[1] == False:
+                        logging.info("Product has no footprint")
+                else:
+                    logging.info("Product was not found in the CSVs!")
+                    list_products(records_csv, full_img_path, "not found in the CSVs", "N/A", "N/A", "N/A")
+            print(finalstrg)
+            if not args.O: list_products(records_csv, full_img_path, "Metadata", parse_footprint(theline[8])[1], "N/A", get_level(full_img_path, theline))
+            logging.info("Metadata was successfully printed to stdout")
+            if args.O:
+                if args.f:
+                    zippedimg = organize(theline, args.output, full_img_path, args.ds,
+                                         parse_footprint(theline[8])[1])
+                else:
+                    zippedimg = organize(theline, args.output, full_img_path, args.ds, True)
+                logging.info("Product was stored into " + zippedimg)
+                list_products(records_csv, full_img_path, "Re-organized", parse_footprint(theline[8])[1], zippedimg, get_level(full_img_path, theline))
+            elif args.r and unzipped:
+                shutil.rmtree(full_img_path)
         else:
             logging.info("---Processing product " + args.avhrr_file)
             logging.info("Product was not found or doesn't have the expected file structure!")

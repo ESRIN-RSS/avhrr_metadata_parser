@@ -298,18 +298,21 @@ def read_ief(img, img_path, ds):
     else:
         ief_file = os.path.join(img_path, img + ".ief")
         m = open(ief_file, "r")
-        raw_contents = m.read()
+        raw_contents = str(m.read())
     contents = raw_contents.replace("-", " -")
-    raw_footprint = f"{contents.split()[15]} {contents.split()[16]} {contents.split()[17]} {contents.split()[18]} {contents.split()[19]} {contents.split()[20]} {contents.split()[21]} {contents.split()[22]}"
+    raw_footprint = ""
+    for f in re.findall("\d+\.\d+", contents)[1:]:
+        raw_footprint += f + " "
+    # raw_footprint = f"{contents.split()[15]} {contents.split()[16]} {contents.split()[17]} {contents.split()[18]} {contents.split()[19]} {contents.split()[20]} {contents.split()[21]} {contents.split()[22]}"
     acq_station = "acquisition_station=" + contents.split()[9][:3]
-    finalstrg = "product=" + img + "\n" \
-                "dataset=" + ds + "\n" \
-                + re.sub(' +', '_', acq_station) + "\n" \
-                "start_orbit_number=" + contents.split()[9][6:11].replace("?????", "0") + "\n" \
-                "size=" + str(get_size(img_path)) + "\n" \
-                "start_time=" + str(parse_time(contents.split()[6], contents.split()[7])[0]) + "\n" \
-                "stop_time=" + str(parse_time(contents.split()[6], contents.split()[8])[0]) + "\n" \
-                "footprint='" + parse_footprint(raw_footprint)[0] + "'"
+    finalstrg = f"product={img}\n" \
+                f"dataset={ds}\n" \
+                f"{re.sub(' +', '_', acq_station)}\n" \
+                f"start_orbit_number={contents.split()[9][6:11].replace('?????', '0')}\n" \
+                f"size={str(get_size(img_path))}\n" \
+                f"start_time={str(parse_time(contents.split()[6], contents.split()[7])[0])}\n" \
+                f"stop_time={str(parse_time(contents.split()[6], contents.split()[8])[0])}\n" \
+                f"footprint='{parse_footprint(raw_footprint)[0]}'"
     theline = ("", contents.split()[6], contents.split()[7], contents.split()[8], "", "", "", "", raw_footprint)
     return finalstrg, theline
 

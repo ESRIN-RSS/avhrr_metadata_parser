@@ -292,7 +292,10 @@ def read_ief(img, img_path, ds):
     ext = os.path.splitext(img_path)[-1]
     if ext in zipped:
         tar = tarfile.open(img_path)
-        m = tar.extractfile(img + ".ief")
+        try:
+            m = tar.extractfile(img + ".ief")
+        except:
+            m = tar.extractfile(img+ "/" + img + ".ief")
         raw_contents = str(m.read())
         tar.close()
     else:

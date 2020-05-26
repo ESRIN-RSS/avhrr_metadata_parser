@@ -248,7 +248,20 @@ def handle_zipped_input(src):
 
 def make_tarfile(output_filename, source_dir):
     with tarfile.open(output_filename, "w:gz") as tar:
-        tar.add(source_dir, arcname="") #os.path.basename(source_dir))
+        tar.add(source_dir, arcname=os.path.basename(source_dir))
+
+
+# def make_tarfile(output_filename, source_dir):
+#     with tarfile.open(output_filename, "w:gz") as tar:
+#         check = 0
+#         for filename in os.listdir(source_dir):
+#             if filename.endswith(".dat"):
+#                 check = 1
+#                 break
+#         if check == 1:
+#             tar.add(source_dir, arcname=os.path.basename(source_dir))
+#         else:
+#             tar.add(source_dir, arcname="")
 
 
 def get_right_img_dir(strg):
@@ -302,7 +315,7 @@ def read_ief(img, img_path, ds):
         ief_file = os.path.join(img_path, img + ".ief")
         m = open(ief_file, "r")
         raw_contents = str(m.read())
-    contents = raw_contents.replace("-", " -")
+    contents = raw_contents.replace("HRP","").replace("-", " -")
     raw_footprint = ""
     for f in re.findall("\d+\.\d+", contents)[1:]:
         raw_footprint += f + " "

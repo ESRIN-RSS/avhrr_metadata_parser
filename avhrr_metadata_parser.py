@@ -324,7 +324,7 @@ def read_ief(img, img_path, ds):
     finalstrg = f"product={img}\n" \
                 f"dataset={ds}\n" \
                 f"{re.sub(' +', '_', acq_station)}\n" \
-                f"start_orbit_number={contents.split()[9][6:11].replace('?????', '0')}\n" \
+                f"start_orbit_number={contents.split()[9][6:11].replace('*****', '0').replace('?????', '0')}\n" \
                 f"size={str(get_size(img_path))}\n" \
                 f"start_time={str(parse_time(contents.split()[6], contents.split()[7])[0])}\n" \
                 f"stop_time={str(parse_time(contents.split()[6], contents.split()[8])[0])}\n" \

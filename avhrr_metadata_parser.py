@@ -316,20 +316,40 @@ def read_ief(img, img_path, ds):
         m = open(ief_file, "r")
         raw_contents = str(m.read())
     contents = raw_contents.replace("HRP","").replace("-", " -")
-    raw_footprint = ""
-    for f in re.findall("\d+\.\d+", contents)[1:]:
-        raw_footprint += f + " "
     # raw_footprint = f"{contents.split()[15]} {contents.split()[16]} {contents.split()[17]} {contents.split()[18]} {contents.split()[19]} {contents.split()[20]} {contents.split()[21]} {contents.split()[22]}"
-    acq_station = "acquisition_station=" + contents.split()[9][:3]
+    if contents.find("CEOS_IEF")>=0:
+        raw_footprint = ""
+        for f in re.findall("\d+\.\d+", contents)[1:]:
+            raw_footprint += f + " "
+        acq_station = "acquisition_station=" + contents.split()[9][:3]
+        start_orbit_no = contents.split()[9][6:11].replace('*****', '0').replace('?????', '0')
+        start_time = str(parse_time(contents.split()[6], contents.split()[7])[0])
+        stop_time = str(parse_time(contents.split()[6], contents.split()[8])[0])
+        theline = ("", contents.split()[6], contents.split()[7], contents.split()[8], "", "", "", "", raw_footprint)
+    else:
+        dates = []
+        times = []
+        for f in contents.split():
+            y = re.search("^[0-9][0-9][0-1][0-9][0-3][0-9]$", f)
+            if not y==None:
+                dates.append(y[0])
+            x = re.search("^[0-2][0-9][0-5][0-9][0-5][0-9]$", f)
+            if not x==None:
+                times.append(x[0])
+        raw_footprint = "0"
+        acq_station = "acquisition_station=" + img[17:20]
+        start_orbit_no = contents.split()[7].replace('*****', '0').replace('?????', '0')
+        start_time = str(parse_time(dates[0], times[0])[0])
+        stop_time = str(parse_time(dates[0], times[1])[0])
+        theline = ("", dates[0], times[0], times[1], "", "", "", "", raw_footprint)
     finalstrg = f"product={img}\n" \
                 f"dataset={ds}\n" \
                 f"{re.sub(' +', '_', acq_station)}\n" \
-                f"start_orbit_number={contents.split()[9][6:11].replace('*****', '0').replace('?????', '0')}\n" \
+                f"start_orbit_number={start_orbit_no}\n" \
                 f"size={str(get_size(img_path))}\n" \
-                f"start_time={str(parse_time(contents.split()[6], contents.split()[7])[0])}\n" \
-                f"stop_time={str(parse_time(contents.split()[6], contents.split()[8])[0])}\n" \
+                f"start_time={start_time}\n" \
+                f"stop_time={stop_time}\n" \
                 f"footprint='{parse_footprint(raw_footprint)[0]}'"
-    theline = ("", contents.split()[6], contents.split()[7], contents.split()[8], "", "", "", "", raw_footprint)
     return finalstrg, theline
 
 
@@ -400,6 +420,7 @@ if __name__ == '__main__':
                                     if parse_footprint(theline[8])[1] == False:
                                         logging.info("Product has no footprint")
                                 else:
+                                    finalstrg = ""
                                     logging.info("Product was not found in the CSVs!")
                                     list_products(records_csv, full_img_path, "not found in the CSVs", "N/A", "N/A", "N/A")
                             print(finalstrg)
@@ -447,6 +468,7 @@ if __name__ == '__main__':
                     if parse_footprint(theline[8])[1] == False:
                         logging.info("Product has no footprint")
                 else:
+                    finalstrg = ""
                     logging.info("Product was not found in the CSVs!")
                     list_products(records_csv, full_img_path, "not found in the CSVs", "N/A", "N/A", "N/A")
             print(finalstrg)

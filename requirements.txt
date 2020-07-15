@@ -3,6 +3,5 @@
 
 #### ESSENTIAL LIBRARIES FOR MAIN FUNCTIONALITY ####
 
-logging
 tarfile
 zipfile
